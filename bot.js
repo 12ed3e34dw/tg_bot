@@ -6,18 +6,63 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 let userMap = {};
 // userMap[userId] = messageText
 
+
+function isAdmin(ctx) {
+    return ctx.from.id === ADMIN_ID;
+}
+
+
+
+
+
+
 bot.start((ctx) => {
-    ctx.reply(
-        "Вітаємо!\n\n" +
-        "Цей бот допоможе вам швидко дізнатися графік відключень електроенергії.\n\n" +
-        "*Доступні команди:*\n" +
-        "/start – запустити бота\n" +
-        "/help - тех підтримка\n" +
-        "/place - вибрати місто\n" +
-        "/website - офіційний сайт\n" +
-        "/dev - Розробники бота\n",
-        { parse_mode: "Markdown" }
-    );
+    if (isAdmin(ctx)) {
+        ctx.reply(
+            "👑 Админ-панель\n\n" +
+            "Команды:\n" +
+            "/place_admin — вибрати місто\n" +
+            "/send — розіслати повідомлення\n" +
+            "/stats — статистика\n" +
+            "/users — список пользователей\n",
+        );
+    } else {
+        ctx.reply(
+            "Вітаємо!\n\n" +
+            "Цей бот допоможе вам швидко дізнатися графік відключень електроенергії.\n\n" +
+            "*Доступні команди:*\n" +
+            "/start – запустити бота\n" +
+            "/help - тех підтримка\n" +
+            "/place - вибрати місто\n" +
+            "/website - офіційний сайт\n" +
+            "/dev - Розробники бота\n",
+            { parse_mode: "Markdown" }
+        );
+    }
+});
+
+
+bot.command("send", (ctx) => {
+    if (!isAdmin(ctx))
+        return ctx.reply("❌ У вас нет доступа.");
+
+    ctx.reply("Введите текст рассылки:");
+});
+
+
+bot.command("users", (ctx) => {
+    if (!isAdmin(ctx))
+        return ctx.reply("❌ Команда только для администратора.");
+
+    ctx.reply("Пользователи: ...");
+});
+
+
+bot.command("stats", (ctx) => {
+    if (!isAdmin(ctx))
+        return ctx.reply("❌ Эта команда недоступна.");
+
+    ctx.reply("📊 Статистика: ...");
 });
 
 
@@ -25,6 +70,12 @@ bot.command("place", (ctx) => {
     const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
     ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
 });
+
+bot.command("place_admin", (ctx) => {
+    const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
+    ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
+});
+
 
 bot.command("website", (ctx) => {
     ctx.reply(
@@ -39,7 +90,6 @@ bot.command("website", (ctx) => {
             }
         }
     );
-
 })
 bot.command("dev", (ctx) => {
     ctx.reply(`Розробники бота: @Sev1x1, @sanyatarpeda`);
@@ -129,4 +179,3 @@ bot.on("message", async (ctx) => {
 
 bot.launch();
 console.log("Бот запущен!");
-
