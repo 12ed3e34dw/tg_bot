@@ -12,10 +12,20 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "i18next": "^25.7.2",
+    "node-cron": "^4.2.1",
+    "pdf-parse": "^2.4.5",
+    "pdf-parse-fixed": "^1.1.1",
+    "pdf-poppler": "^0.2.3",
+    "sqlite3": "^5.1.7",
     "telegraf": "^4.16.3",
-    "telegraf-i18next": "^5.0.0"
+    "telegraf-i18next": "^5.0.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

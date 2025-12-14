@@ -3,23 +3,21 @@ const { Telegraf, Markup } = require("telegraf");
 const regions = require("./regions");
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = Number(process.env.ADMIN_ID);
+const sqlite3 = require("sqlite3").verbose();
+const db=new sqlite3.Database("./users.db");
 let userMap = {};
 // userMap[userId] = messageText
 
 
+// Panel Admin
 function isAdmin(ctx) {
     return ctx.from.id === ADMIN_ID;
 }
-
-
-
-
-
-
+//Main
 bot.start((ctx) => {
     if (isAdmin(ctx)) {
         ctx.reply(
-            "👑 Админ-панель\n\n" +
+            "Админ-панель\n\n" +
             "Команды:\n" +
             "/place_admin — вибрати місто\n" +
             "/send — розіслати повідомлення\n" +
@@ -36,27 +34,26 @@ bot.start((ctx) => {
             "/place - вибрати місто\n" +
             "/website - офіційний сайт\n" +
             "/dev - Розробники бота\n",
-            { parse_mode: "Markdown" }
         );
     }
 });
+
+
+//_____________________________________________________________________________________________________________________
+// Admin commands
 
 
 bot.command("send", (ctx) => {
     if (!isAdmin(ctx))
         return ctx.reply("❌ У вас нет доступа.");
 
-    ctx.reply("Введите текст рассылки:");
-});
 
+});
 
 bot.command("users", (ctx) => {
     if (!isAdmin(ctx))
         return ctx.reply("❌ Команда только для администратора.");
-
-    ctx.reply("Пользователи: ...");
 });
-
 
 bot.command("stats", (ctx) => {
     if (!isAdmin(ctx))
@@ -66,12 +63,15 @@ bot.command("stats", (ctx) => {
 });
 
 
-bot.command("place", (ctx) => {
+
+bot.command("place_admin", (ctx) => {
     const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
     ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
 });
 
-bot.command("place_admin", (ctx) => {
+//_____________________________________________________________________________________________________________________
+
+bot.command("place", (ctx) => {
     const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
     ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
 });
@@ -119,62 +119,47 @@ bot.command("help", async (ctx) => {
 });
 
 
-
 bot.on("message", async (ctx) => {
     const msg = ctx.message;
     const userId = msg.from.id;
     const chatId = msg.chat.id;
-
-
+    const username = msg.from.username ? `@${msg.from.username}` : "нет username";
+    const firstName = msg.from.first_name || "нет имени";
+    const lastName = msg.from.last_name || "";
+    const fullName = `${firstName} ${lastName}`.trim();
     if (chatId === ADMIN_ID) {
         // Админ отвечает через кнопку
         if (msg.reply_to_message && msg.reply_to_message.text.includes("Ответить пользователю")) {
             const uid = msg.reply_to_message.text.match(/ID: (\d+)/)[1];
 
-            await bot.telegram.sendMessage(uid, msg.text);
-            await ctx.reply("✔ Ответ отправлен пользователю!");
-
+            try {
+                await bot.telegram.sendMessage(uid, msg.text);
+                await ctx.reply("✔ Ответ отправлен пользователю!");
+            } catch (e) {
+                await ctx.reply("❌ Не удалось отправить — пользователь заблокировал бота.");
+            }
             return;
         }
-
         return;
     }
-
-
     userMap[userId] = msg.text || "[медиа]";
-
-    await bot.telegram.sendMessage(
-        ADMIN_ID,
-        `📩 Новое сообщение от пользователя:\n` +
-        `ID: ${userId}\n\n` +
-        `${userMap[userId]}`,
-        Markup.inlineKeyboard([
-            [Markup.button.callback("Ответить пользователю", `reply_${userId}`)]
-        ])
-    );
+    try {
+        await bot.telegram.sendMessage(
+            ADMIN_ID,
+            `📩 Новое сообщение от пользователя:\n` +
+            `ID: ${userId}\n` +
+            `Имя: ${fullName}\n` +
+            `Username: ${username}\n\n` +
+            `${userMap[userId]}`,
+            Markup.inlineKeyboard([
+                [Markup.button.callback("Ответить пользователю", `reply_${userId}`)]
+            ])
+        );
+    } catch (e) {
+        console.error("Ошибка отправки админу:", e.description);
+    }
 
     await ctx.reply("📨 Сообщение отправлено в поддержку. Ожидайте ответа.");
-});
-
-
-bot.action(/reply_(.+)/, async (ctx) => {
-    const userId = ctx.match[1];
-
-    await ctx.reply(
-        `✍ Напишите сообщение — и я отправлю его пользователю.\nID: ${userId}\n\n` +
-        `Ответить пользователю:`,
-        { reply_markup: { force_reply: true } }
-    );
-});
-
-
-bot.on("message", async (ctx) => {
-    if (ctx.message.reply_to_message && ctx.message.reply_to_message.text.includes("ID:")) {
-        const uid = ctx.message.reply_to_message.text.match(/ID: (\d+)/)[1];
-
-        await bot.telegram.sendMessage(uid, ctx.message.text);
-        await ctx.reply("✔ Ответ отправлен!");
-    }
 });
 
 bot.launch();
