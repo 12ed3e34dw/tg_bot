@@ -1,166 +1,235 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const regions = require("./regions");
+const websites = require("./websites");
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = Number(process.env.ADMIN_ID);
+
 const sqlite3 = require("sqlite3").verbose();
-const db=new sqlite3.Database("./users.db");
+const db = new sqlite3.Database("./users.db");
+
 let userMap = {};
-// userMap[userId] = messageText
 
-
-// Panel Admin
+// =====================
+// Проверка админа
+// =====================
 function isAdmin(ctx) {
-    return ctx.from.id === ADMIN_ID;
+    return ctx.from?.id === ADMIN_ID;
 }
-//Main
-bot.start((ctx) => {
+
+// =====================
+// Безопасная отправка сообщений
+// =====================
+async function safeSend(fn) {
+    try {
+        await fn();
+    } catch (e) {
+        const code = e?.response?.error_code;
+        if (code === 403) {
+            console.log("🚫 Пользователь заблокировал бота");
+        } else {
+            console.error("❌ Ошибка Telegram:", e);
+        }
+    }
+}
+
+// =====================
+// Поиск города/области
+// =====================
+function findLocationLink(text) {
+    if (!text) return null;
+    const normalized = text.trim().toLowerCase();
+    for (const key of Object.keys(websites)) {
+        if (key.toLowerCase() === normalized) {
+            return { name: key, url: websites[key] };
+        }
+    }
+    return null;
+}
+
+// =====================
+// /start
+// =====================
+bot.start(async (ctx) => {
     if (isAdmin(ctx)) {
-        ctx.reply(
-            "Админ-панель\n\n" +
-            "Команды:\n" +
-            "/place_admin — вибрати місто\n" +
-            "/send — розіслати повідомлення\n" +
-            "/stats — статистика\n" +
-            "/users — список пользователей\n",
+        await safeSend(() =>
+            ctx.reply(
+                "Админ-панель\n\n" +
+                "/place_admin — вибрати місто\n" +
+                "/send — розіслати повідомлення\n" +
+                "/stats — статистика\n" +
+                "/users — список пользователей"
+            )
         );
     } else {
-        ctx.reply(
-            "Вітаємо!\n\n" +
-            "Цей бот допоможе вам швидко дізнатися графік відключень електроенергії.\n\n" +
-            "*Доступні команди:*\n" +
-            "/start – запустити бота\n" +
-            "/help - тех підтримка\n" +
-            "/place - вибрати місто\n" +
-            "/website - офіційний сайт\n" +
-            "/dev - Розробники бота\n",
+        await safeSend(() =>
+            ctx.reply(
+                "Вітаємо!\n\n" +
+                "Цей бот допоможе вам швидко дізнатися графік відключень електроенергії.\n\n" +
+                "*Доступні команди:*\n" +
+                "/start – запустити бота\n" +
+                "/help - тех підтримка\n" +
+                "/place - вибрати місто\n" +
+                "/website - офіційний сайт\n" +
+                "/dev - Розробники бота\n",
+                { parse_mode: "Markdown" }
+            )
         );
     }
 });
 
-
-//_____________________________________________________________________________________________________________________
-// Admin commands
-
-
+// =====================
+// Admin команды
+// =====================
 bot.command("send", (ctx) => {
-    if (!isAdmin(ctx))
-        return ctx.reply("❌ У вас нет доступа.");
-
-
+    if (!isAdmin(ctx)) return ctx.reply("❌ У вас нет доступа.");
+    ctx.reply("Введите сообщение для рассылки всем пользователям...");
 });
 
 bot.command("users", (ctx) => {
-    if (!isAdmin(ctx))
-        return ctx.reply("❌ Команда только для администратора.");
+    if (!isAdmin(ctx)) return ctx.reply("❌ Команда только для администратора.");
+    const ids = Object.keys(userMap);
+    ctx.reply(`👥 Всего пользователей: ${ids.length}\nIDs: ${ids.join(", ")}`);
 });
 
 bot.command("stats", (ctx) => {
-    if (!isAdmin(ctx))
-        return ctx.reply("❌ Эта команда недоступна.");
-
-    ctx.reply("📊 Статистика: ...");
+    if (!isAdmin(ctx)) return ctx.reply("❌ Недоступно.");
+    ctx.reply("📊 Статистика...");
 });
-
-
 
 bot.command("place_admin", (ctx) => {
-    const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
-    ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
+    if (!isAdmin(ctx)) return;
+    const buttons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
+    ctx.reply("Виберіть область:", Markup.inlineKeyboard(buttons));
 });
 
-//_____________________________________________________________________________________________________________________
-
+// =====================
+// /place
+// =====================
 bot.command("place", (ctx) => {
-    const regionButtons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
-    ctx.reply("Виберіть область:", Markup.inlineKeyboard(regionButtons));
+    const buttons = Object.keys(regions).map(r => [Markup.button.callback(r, `region_${r}`)]);
+    ctx.reply("Виберіть область:", Markup.inlineKeyboard(buttons));
 });
 
+// =====================
+// /website
+// =====================
+bot.command("website", async (ctx) => {
+    const text = ctx.message.text.replace("/website", "").trim();
+    const location = findLocationLink(text);
 
-bot.command("website", (ctx) => {
-    ctx.reply(
-        "🔌 Відкрити веб-версію",
-        {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "Відкрити сайт", web_app: { url: "https://off.energy.mk.ua/" } }
+    if (!location) {
+        return safeSend(() =>
+            ctx.reply("❌ Місто не знайдено. Використайте /place.")
+        );
+    }
+
+    await safeSend(() =>
+        ctx.reply(
+            `📍 *${location.name}*\n\nПереглянути графік:`,
+            {
+                parse_mode: "Markdown",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🔌 Відкрити сайт", url: location.url }]
                     ]
-                ]
+                }
             }
-        }
+        )
     );
-})
-bot.command("dev", (ctx) => {
-    ctx.reply(`Розробники бота: @Sev1x1, @sanyatarpeda`);
 });
 
+// =====================
+// /dev
+// =====================
+bot.command("dev", (ctx) => {
+    ctx.reply("Розробники бота: @Sev1x1, @sanyatarpeda");
+});
 
+// =====================
+// Inline кнопки
+// =====================
 bot.action(/region_(.+)/, (ctx) => {
     const region = ctx.match[1];
-    const cities = regions[region];
-    const cityButtons = cities.map(c => [Markup.button.callback(c, `city_${c}`)]);
-    ctx.reply(`Виберіть місто в області "${region}":`, Markup.inlineKeyboard(cityButtons));
+    const cities = regions[region] || [];
+    const buttons = cities.map(c => [Markup.button.callback(c, `city_${c}`)]);
+    ctx.reply(`Виберіть місто (${region}):`, Markup.inlineKeyboard(buttons));
 });
 
 bot.action(/city_(.+)/, async (ctx) => {
     const city = ctx.match[1];
-    ctx.reply(`Ви обрали місто: ${city}`);
-});
+    const location = findLocationLink(city);
 
+    if (!location) return ctx.reply(`Ви обрали місто: ${city}`);
 
-bot.command("help", async (ctx) => {
-    await ctx.reply(
-        "👋 *Помощь*\n\n" +
-        "Напишите любое сообщение, и оно будет отправлено в техподдержку.\n" +
-        "Ожидайте ответ.",
-        { parse_mode: "Markdown" }
+    await safeSend(() =>
+        ctx.reply(
+            `📍 *${location.name}*\n\nПереглянути графік:`,
+            {
+                parse_mode: "Markdown",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🔌 Відкрити сайт", url: location.url }]
+                    ]
+                }
+            }
+        )
     );
 });
 
+// =====================
+// /help
+// =====================
+bot.command("help", async (ctx) => {
+    await safeSend(() =>
+        ctx.reply(
+            "👋 *Помощь*\n\n" +
+            "Напишите сообщение — оно уйдёт в поддержку.",
+            { parse_mode: "Markdown" }
+        )
+    );
+});
 
+// =====================
+// Сообщения
+// =====================
 bot.on("message", async (ctx) => {
     const msg = ctx.message;
     const userId = msg.from.id;
-    const chatId = msg.chat.id;
-    const username = msg.from.username ? `@${msg.from.username}` : "нет username";
-    const firstName = msg.from.first_name || "нет имени";
-    const lastName = msg.from.last_name || "";
-    const fullName = `${firstName} ${lastName}`.trim();
-    if (chatId === ADMIN_ID) {
-        // Админ отвечает через кнопку
-        if (msg.reply_to_message && msg.reply_to_message.text.includes("Ответить пользователю")) {
-            const uid = msg.reply_to_message.text.match(/ID: (\d+)/)[1];
 
-            try {
-                await bot.telegram.sendMessage(uid, msg.text);
-                await ctx.reply("✔ Ответ отправлен пользователю!");
-            } catch (e) {
-                await ctx.reply("❌ Не удалось отправить — пользователь заблокировал бота.");
-            }
-            return;
-        }
-        return;
-    }
+    if (findLocationLink(msg.text)) return;
+
+    if (ctx.chat.id === ADMIN_ID) return;
+
     userMap[userId] = msg.text || "[медиа]";
-    try {
-        await bot.telegram.sendMessage(
-            ADMIN_ID,
-            `📩 Новое сообщение от пользователя:\n` +
-            `ID: ${userId}\n` +
-            `Имя: ${fullName}\n` +
-            `Username: ${username}\n\n` +
-            `${userMap[userId]}`,
-            Markup.inlineKeyboard([
-                [Markup.button.callback("Ответить пользователю", `reply_${userId}`)]
-            ])
-        );
-    } catch (e) {
-        console.error("Ошибка отправки админу:", e.description);
-    }
 
-    await ctx.reply("📨 Сообщение отправлено в поддержку. Ожидайте ответа.");
+    await safeSend(() =>
+        bot.telegram.sendMessage(
+            ADMIN_ID,
+            `📩 Новое сообщение\nID: ${userId}\n\n${userMap[userId]}`
+        )
+    );
+
+    await safeSend(() =>
+        ctx.reply("📨 Сообщение отправлено в поддержку.")
+    );
 });
 
+// =====================
+// Глобальный catch
+// =====================
+bot.catch((err, ctx) => {
+    const code = err?.response?.error_code;
+    if (code === 403) {
+        console.log(`🚫 Бот заблокирован пользователем ${ctx?.chat?.id}`);
+        return;
+    }
+    console.error("🔥 Telegraf error:", err);
+});
+
+// =====================
+// Запуск
+// =====================
 bot.launch();
-console.log("Бот запущен!");
+console.log("🤖 Бот запущен!");

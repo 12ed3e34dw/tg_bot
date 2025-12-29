@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start js": "node bot.js\n",
-    "test": "node test/test.js\n"
+    "test": "node test/test.js\n",
+    "test_3": "node test/test3.js\n",
+    "test_info": "node test/en1.js\n",
+    "test_info2": "node test/en2.js\n"
   },
   "keywords": [],
   "author": "",
